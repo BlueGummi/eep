@@ -76,28 +76,7 @@ impl Editor {
             return;
         }
         if self.cursor_x > 0 {
-            let mut remove_four = true;
-            for i in 1..=4 {
-                if self.content[self.cursor_y]
-                    .char_indices()
-                    .nth(self.cursor_x - i)
-                    .is_some_and(|(_, value)| value != ' ')
-                {
-                    remove_four = false;
-                }
-            }
             self.content[self.cursor_y].remove(self.cursor_x - 1);
-            if remove_four {
-                let length = if self.content[self.cursor_y].len() > 3 {
-                    4
-                } else {
-                    self.content[self.cursor_y].len()
-                };
-                for i in 2..=length {
-                    self.content[self.cursor_y].remove(self.cursor_x - i);
-                }
-                self.cursor_x -= 3;
-            }
             self.cursor_x -= 1;
         } else if self.cursor_y > 0 {
             let current_line = self.content.remove(self.cursor_y);

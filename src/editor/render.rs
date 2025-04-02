@@ -44,10 +44,9 @@ impl Editor {
                 let line = &self.content[content_row];
                 let line_len = line.len();
                 let start = self.offset_x;
-                let end = std::cmp::min(start + self.screen_cols - line_num_width, line_len);
 
                 if start < line_len {
-                    let visible_part = &line[start..end];
+                    let visible_part = &line[start..line_len];
                     write!(
                         screen,
                         "{}{}{}",
