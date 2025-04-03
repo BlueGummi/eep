@@ -1,13 +1,14 @@
-use std::fs;
-use std::io::{self, Write, stdout};
-use std::path::PathBuf;
-use termion::event::{Event, Key};
-use termion::input::TermRead;
-use termion::raw::IntoRawMode;
-use termion::{
-    cursor::{self},
-    terminal_size,
+use crossterm::{
+    cursor::{Hide, SetCursorStyle, Show},
+    event::{
+        DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers, read,
+    },
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use std::fs;
+use std::io::{self, stdout};
+use std::path::PathBuf;
 
 #[derive(PartialEq)]
 pub enum Mode {
@@ -41,7 +42,7 @@ impl Default for Editor {
 
 impl Editor {
     pub fn new() -> Self {
-        let (cols, rows) = terminal_size().unwrap();
+        let (cols, rows) = crossterm::terminal::size().unwrap();
         Editor {
             content: vec![String::new()],
             cursor_x: 0,
@@ -89,93 +90,184 @@ impl Editor {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let stdin = io::stdin();
+        let mut stdout = stdout();
 
-        let mut stdout = stdout().into_raw_mode().unwrap();
+        enable_raw_mode()?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture,)?;
+        execute!(stdout, SetCursorStyle::SteadyBlock)?;
 
-        write!(stdout, "\x1B[?1003h").unwrap();
-        stdout.flush().unwrap();
+        self.render()?;
 
-        self.render();
+        loop {
+            match read()? {
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('q'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => break,
 
-        for event in stdin.events() {
-            match event? {
-                Event::Key(Key::Char('q')) if self.mode == Mode::Normal => break,
-                Event::Key(Key::Char(':')) if self.mode == Mode::Normal => {
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(':'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
                     self.mode = Mode::Command;
                     self.show_command = true;
                     self.command_buffer.clear();
                 }
-                Event::Key(Key::Char('i')) if self.mode == Mode::Normal => {
-                    let stdout = io::stdout();
-                    let mut handle = stdout.lock();
-                    write!(handle, "{}", cursor::SteadyBar)?;
-                    handle.flush()?;
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('i'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
+                    execute!(stdout, SetCursorStyle::SteadyUnderScore)?;
                     self.mode = Mode::Insert;
                 }
-                Event::Key(Key::Esc) => {
-                    let stdout = io::stdout();
-                    let mut handle = stdout.lock();
-                    write!(handle, "{}", cursor::SteadyBlock)?;
-                    handle.flush()?;
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Esc,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) => {
+                    execute!(stdout, SetCursorStyle::SteadyBlock)?;
                     if self.mode == Mode::Command {
                         self.command_buffer.clear();
                         self.show_command = false;
                     }
                     self.mode = Mode::Normal;
                 }
-                Event::Key(Key::Backspace) if self.mode == Mode::Insert => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Backspace,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Insert => {
                     self.delete_char();
                 }
-                Event::Key(Key::Backspace) if self.mode == Mode::Command => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Backspace,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Command => {
                     self.command_buffer.pop();
                 }
-                Event::Key(Key::Char('\n')) if self.mode == Mode::Insert => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Insert => {
                     self.insert_newline();
                 }
-                Event::Key(Key::Char('\n')) if self.mode == Mode::Command => {
-                    self.process_command();
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Command => {
+                    self.process_command()?;
                     self.mode = Mode::Normal;
                 }
-                Event::Key(Key::Char('n')) if self.mode == Mode::Normal => {
-                    self.show_line_numbers = !self.show_line_numbers;
-                }
-                Event::Key(Key::Char(c)) if self.mode == Mode::Insert => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Insert => {
                     self.insert_char(c);
                 }
-                Event::Key(Key::Char(c)) if self.mode == Mode::Command => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Command => {
                     self.command_buffer.push(c);
                 }
-                Event::Key(Key::Char('h')) if self.mode == Mode::Normal => {
-                    self.move_cursor(Key::Left)
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('h'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
+                    self.move_cursor(KeyCode::Left);
                 }
-                Event::Key(Key::Char('j')) if self.mode == Mode::Normal => {
-                    self.move_cursor(Key::Down)
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('j'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
+                    self.move_cursor(KeyCode::Down);
                 }
-                Event::Key(Key::Char('k')) if self.mode == Mode::Normal => {
-                    self.move_cursor(Key::Up)
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
+                    self.move_cursor(KeyCode::Up);
                 }
-                Event::Key(Key::Char('l')) if self.mode == Mode::Normal => {
-                    self.move_cursor(Key::Right)
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('l'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
+                    self.move_cursor(KeyCode::Right);
                 }
-                Event::Key(Key::Char('0')) if self.mode == Mode::Normal => self.cursor_x = 0,
-                Event::Key(Key::Char('$')) if self.mode == Mode::Normal => {
-                    self.cursor_x = self.content[self.cursor_y].len()
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('0'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
+                    self.cursor_x = 0;
                 }
-                Event::Key(Key::Char('G')) if self.mode == Mode::Normal => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('$'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
+                    self.cursor_x = self.content[self.cursor_y].len();
+                }
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('G'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
                     self.cursor_y = self.content.len() - 1;
                     self.cursor_x = self.content[self.cursor_y].len();
                 }
-                Event::Key(Key::Char('g')) if self.mode == Mode::Normal => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('g'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
                     self.cursor_y = 0;
                     self.cursor_x = 0;
                 }
-                Event::Key(Key::Char('x')) if self.mode == Mode::Normal => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('x'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
                     if self.cursor_x < self.content[self.cursor_y].len() {
                         self.content[self.cursor_y].remove(self.cursor_x);
                     }
                 }
-                Event::Key(Key::Char('d')) if self.mode == Mode::Normal => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('d'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
                     if self.content.len() > 1 {
                         self.content.remove(self.cursor_y);
                         if self.cursor_y >= self.content.len() {
@@ -184,22 +276,33 @@ impl Editor {
                         self.cursor_x = 0;
                     }
                 }
-                Event::Key(Key::Char('u')) if self.mode == Mode::Normal => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('u'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
                     self.set_status("Undo not implemented yet");
                 }
-                Event::Key(Key::Char('/')) if self.mode == Mode::Normal => {
+
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('/'),
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) if self.mode == Mode::Normal => {
                     self.set_status("Search not implemented yet");
                 }
-                Event::Key(key) => self.move_cursor(key),
-                Event::Mouse(me) => self.handle_mouse_event(me),
+
+                Event::Key(key_event) => self.move_cursor(key_event.code),
+                Event::Mouse(event) => self.handle_mouse_event(event),
                 _ => {}
             }
 
             self.scroll();
-            self.render();
+            self.render()?;
         }
-        write!(stdout, "\x1B[?1003l").unwrap();
-        stdout.flush().unwrap();
+        disable_raw_mode()?;
+        execute!(stdout, LeaveAlternateScreen, DisableMouseCapture, Show)?;
         Ok(())
     }
 }

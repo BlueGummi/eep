@@ -1,22 +1,18 @@
 use crate::*;
-use std::io::Write;
-use termion::color;
-use termion::raw::IntoRawMode;
-use termion::{
-    clear,
-    cursor::{self},
-    screen::IntoAlternateScreen,
+use crossterm::{
+    execute,
+    style::Print,
+    terminal::{Clear, ClearType, EnterAlternateScreen, size},
 };
-impl Editor {
-    pub fn render(&mut self) {
-        let mut screen = std::io::stdout()
-            .into_raw_mode()
-            .unwrap()
-            .into_alternate_screen()
-            .unwrap();
-        write!(screen, "{}", clear::All).unwrap();
+use std::io::{Write, stdout};
 
-        let (cols, rows) = termion::terminal_size().unwrap();
+impl Editor {
+    pub fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut stdout = stdout();
+        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, Clear(ClearType::All))?;
+
+        let (cols, rows) = size()?;
         self.screen_cols = cols as usize;
         self.screen_rows = rows as usize - 2;
 
@@ -26,19 +22,25 @@ impl Editor {
             0
         };
 
+        let mut output = String::new();
+
+        if self.cursor_y >= self.offset_y + self.screen_rows - 1 {
+            self.offset_y = self.cursor_y.saturating_sub(self.screen_rows - 1) + 1;
+        }
+        if self.cursor_y < self.offset_y {
+            self.offset_y = self.cursor_y;
+        }
+
         for row in 0..self.screen_rows {
             let content_row = row + self.offset_y;
             if content_row < self.content.len() {
                 if self.show_line_numbers {
-                    let line_num = format!("{:>width$} ", content_row + 1, width = line_num_width);
-                    write!(
-                        screen,
-                        "{}{}{}",
-                        cursor::Goto(1, (row + 1) as u16),
-                        color::Fg(color::LightBlack),
-                        line_num
-                    )
-                    .unwrap();
+                    let line_num = format!(
+                        "{:>width$} \x1B[90m\x1B[39m ",
+                        content_row + 1,
+                        width = line_num_width
+                    );
+                    output.push_str(&format!("\x1B[{};{}H{}", row + 1, 1, line_num));
                 }
 
                 let line = &self.content[content_row];
@@ -46,27 +48,17 @@ impl Editor {
                 let start = self.offset_x;
 
                 if start < line_len {
-                    let visible_part = &line[start..line_len];
-                    write!(
-                        screen,
-                        "{}{}{}",
-                        cursor::Goto((line_num_width + 2) as u16, (row + 1) as u16),
-                        color::Fg(color::Reset),
+                    let visible_part = &line[start
+                        ..std::cmp::min(start + self.screen_cols - line_num_width - 3, line_len)];
+                    output.push_str(&format!(
+                        "\x1B[{};{}H{}",
+                        row + 1,
+                        line_num_width + 3,
                         visible_part
-                    )
-                    .unwrap();
+                    ));
                 }
             }
         }
-
-        write!(screen, "{}", cursor::Goto(1, (self.screen_rows + 1) as u16)).unwrap();
-        write!(
-            screen,
-            "{}{}",
-            color::Bg(color::LightBlack),
-            color::Fg(color::White)
-        )
-        .unwrap();
 
         let mode = match self.mode {
             Mode::Normal => "NORMAL",
@@ -117,22 +109,24 @@ impl Editor {
             ))
         );
 
-        write!(screen, "{}", &status_line[..self.screen_cols]).unwrap();
-        write!(
-            screen,
-            "{}{}",
-            color::Bg(color::Reset),
-            color::Fg(color::Reset)
-        )
-        .unwrap();
+        output.push_str(&format!(
+            "\x1B[{};1H\x1B[48;5;236m\x1B[37m{}\x1B[0m",
+            self.screen_rows + 1,
+            &status_line[..self.screen_cols]
+        ));
 
         let cursor_row = (self.cursor_y - self.offset_y) as u16 + 1;
         let cursor_col = if self.show_line_numbers {
-            (self.cursor_x - self.offset_x) as u16 + line_num_width as u16 + 2
+            (self.cursor_x - self.offset_x) as u16 + line_num_width as u16 + 3
         } else {
             (self.cursor_x - self.offset_x) as u16 + 1
         };
-        write!(screen, "{}", cursor::Goto(cursor_col, cursor_row)).unwrap();
-        screen.flush().unwrap();
+
+        let cursor_row = std::cmp::min(cursor_row, self.screen_rows as u16);
+        output.push_str(&format!("\x1B[{};{}H", cursor_row, cursor_col));
+
+        execute!(stdout, Print(output))?;
+        stdout.flush()?;
+        Ok(())
     }
 }

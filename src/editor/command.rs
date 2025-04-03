@@ -1,14 +1,20 @@
 use crate::*;
-use std::io::{Write, stdout};
+use crossterm::{
+    cursor::Show,
+    event::DisableMouseCapture,
+    execute,
+    terminal::{LeaveAlternateScreen, disable_raw_mode},
+};
+use std::io::stdout;
 use std::path::PathBuf;
 
 impl Editor {
-    pub fn process_command(&mut self) {
+    pub fn process_command(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let cmd = self.command_buffer.trim();
         match cmd {
             "q" => {
-                write!(stdout(), "\x1B[?1003l").unwrap();
-                stdout().flush().unwrap();
+                disable_raw_mode()?;
+                execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture, Show)?;
                 std::process::exit(0);
             }
             "w" => {
@@ -20,8 +26,8 @@ impl Editor {
                 if let Err(e) = self.save_file() {
                     self.set_status(&format!("Error saving file: {}", e));
                 } else {
-                    write!(stdout(), "\x1B[?1003l").unwrap();
-                    stdout().flush().unwrap();
+                    disable_raw_mode()?;
+                    execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture, Show)?;
                     std::process::exit(0);
                 }
             }
@@ -36,5 +42,6 @@ impl Editor {
         }
         self.command_buffer.clear();
         self.show_command = false;
+        Ok(())
     }
 }

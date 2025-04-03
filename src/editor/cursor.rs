@@ -1,20 +1,20 @@
 use crate::*;
-use termion::event::{Key, MouseButton, MouseEvent};
+use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 
 impl Editor {
-    pub fn move_cursor(&mut self, direction: Key) {
+    pub fn move_cursor(&mut self, direction: KeyCode) {
         match direction {
-            Key::Up => {
+            KeyCode::Up => {
                 if self.cursor_y > 0 {
                     self.cursor_y -= 1;
                 }
             }
-            Key::Down => {
+            KeyCode::Down => {
                 if self.cursor_y < self.content.len() - 1 {
                     self.cursor_y += 1;
                 }
             }
-            Key::Left => {
+            KeyCode::Left => {
                 if self.cursor_x > 0 {
                     self.cursor_x -= 1;
                 } else if self.cursor_y > 0 {
@@ -22,7 +22,7 @@ impl Editor {
                     self.cursor_x = self.content[self.cursor_y].len();
                 }
             }
-            Key::Right => {
+            KeyCode::Right => {
                 if self.cursor_x < self.content[self.cursor_y].len() {
                     self.cursor_x += 1;
                 } else if self.cursor_y < self.content.len() - 1 {
@@ -92,23 +92,20 @@ impl Editor {
         self.cursor_y += 1;
         self.cursor_x = 0;
     }
+
     pub fn handle_mouse_event(&mut self, event: MouseEvent) {
-        match event {
-            MouseEvent::Press(button, _, _) => match button {
-                MouseButton::WheelUp => {
-                    self.move_cursor(Key::Up);
-                    self.move_cursor(Key::Up);
-                    self.move_cursor(Key::Up);
-                }
-                MouseButton::WheelDown => {
-                    self.move_cursor(Key::Down);
-                    self.move_cursor(Key::Down);
-                    self.move_cursor(Key::Down);
-                }
-                _ => (),
-            },
-            MouseEvent::Release(_, _) => {}
-            MouseEvent::Hold(_, _) => {}
+        match event.kind {
+            MouseEventKind::ScrollUp => {
+                self.move_cursor(KeyCode::Up);
+                self.move_cursor(KeyCode::Up);
+                self.move_cursor(KeyCode::Up);
+            }
+            MouseEventKind::ScrollDown => {
+                self.move_cursor(KeyCode::Down);
+                self.move_cursor(KeyCode::Down);
+                self.move_cursor(KeyCode::Down);
+            }
+            _ => (),
         }
     }
 }
