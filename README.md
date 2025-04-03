@@ -8,6 +8,18 @@
 
 - [ ] undo cache
 
+- [ ] persistent indentation
+
+- [ ] unicode 
+
+- [ ] toml config for modularity
+
+- [ ] colorscheme variation
+
+- [ ] line wrap 
+
+- [ ] easy toml glyphs
+
 - [ ] more CLI options 
 
     - [ ] move to clap

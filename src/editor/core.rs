@@ -1,10 +1,10 @@
 use crossterm::{
-    cursor::{Hide, SetCursorStyle, Show},
+    cursor::{SetCursorStyle, Show},
     event::{
-        DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers, read,
+        read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
     },
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use std::fs;
 use std::io::{self, stdout};
@@ -32,6 +32,7 @@ pub struct Editor {
     pub show_command: bool,
     pub tabbed: bool,
     pub show_line_numbers: bool,
+    pub stdout: io::Stdout,
 }
 
 impl Default for Editor {
@@ -58,6 +59,7 @@ impl Editor {
             show_command: false,
             tabbed: false,
             show_line_numbers: true,
+            stdout: stdout(),
         }
     }
 
@@ -90,11 +92,9 @@ impl Editor {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut stdout = stdout();
-
         enable_raw_mode()?;
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture,)?;
-        execute!(stdout, SetCursorStyle::SteadyBlock)?;
+        execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture,)?;
+        execute!(self.stdout, SetCursorStyle::SteadyBlock)?;
 
         self.render()?;
 
@@ -121,7 +121,7 @@ impl Editor {
                     modifiers: KeyModifiers::NONE,
                     ..
                 }) if self.mode == Mode::Normal => {
-                    execute!(stdout, SetCursorStyle::SteadyUnderScore)?;
+                    execute!(self.stdout, SetCursorStyle::SteadyBar)?;
                     self.mode = Mode::Insert;
                 }
 
@@ -130,7 +130,7 @@ impl Editor {
                     modifiers: KeyModifiers::NONE,
                     ..
                 }) => {
-                    execute!(stdout, SetCursorStyle::SteadyBlock)?;
+                    execute!(self.stdout, SetCursorStyle::SteadyBlock)?;
                     if self.mode == Mode::Command {
                         self.command_buffer.clear();
                         self.show_command = false;
@@ -241,7 +241,6 @@ impl Editor {
                     ..
                 }) if self.mode == Mode::Normal => {
                     self.cursor_y = self.content.len() - 1;
-                    self.cursor_x = self.content[self.cursor_y].len();
                 }
 
                 Event::Key(KeyEvent {
@@ -302,7 +301,7 @@ impl Editor {
             self.render()?;
         }
         disable_raw_mode()?;
-        execute!(stdout, LeaveAlternateScreen, DisableMouseCapture, Show)?;
+        execute!(self.stdout, LeaveAlternateScreen, DisableMouseCapture, Show)?;
         Ok(())
     }
 }

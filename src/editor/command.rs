@@ -3,9 +3,8 @@ use crossterm::{
     cursor::Show,
     event::DisableMouseCapture,
     execute,
-    terminal::{LeaveAlternateScreen, disable_raw_mode},
+    terminal::{disable_raw_mode, LeaveAlternateScreen},
 };
-use std::io::stdout;
 use std::path::PathBuf;
 
 impl Editor {
@@ -14,7 +13,7 @@ impl Editor {
         match cmd {
             "q" => {
                 disable_raw_mode()?;
-                execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture, Show)?;
+                execute!(self.stdout, LeaveAlternateScreen, DisableMouseCapture, Show)?;
                 std::process::exit(0);
             }
             "w" => {
@@ -27,7 +26,7 @@ impl Editor {
                     self.set_status(&format!("Error saving file: {}", e));
                 } else {
                     disable_raw_mode()?;
-                    execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture, Show)?;
+                    execute!(self.stdout, LeaveAlternateScreen, DisableMouseCapture, Show)?;
                     std::process::exit(0);
                 }
             }
